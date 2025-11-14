@@ -1,51 +1,37 @@
-import React, { useCallback, useState } from "react";
-import {
-  View,
-  Text,
-  FlatList,
-  ActivityIndicator,
-  StyleSheet,
-} from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
+import React, { useEffect, useState } from "react";
+import { View, Text, FlatList, ActivityIndicator, StyleSheet } from "react-native";
 import { getFavorites } from "../../storage/favorites";
 import { fetchRates } from "../../services/exchangeService";
 
 export default function Favorites() {
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [rates, setRates] = useState<Record<string, number>>({});
+  const [rates, setRates] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useFocusEffect(
-    useCallback(() => {
-      let isActive = true;
+  async function loadData() {
+    try {
+      const favs = await getFavorites();
+      setFavorites(favs);
 
-      async function load() {
-        try {
-          setLoading(true);
-
-          const favs = await getFavorites();
-          if (isActive) setFavorites(favs);
-
-          if (favs.length > 0) {
-            const r = await fetchRates("USD");
-            if (isActive) setRates(r.conversion_rates);
-          } else {
-            if (isActive) setRates({});
-          }
-        } catch (e) {
-          console.error(e);
-        } finally {
-          if (isActive) setLoading(false);
-        }
+      if (favs.length > 0) {
+        const r = await fetchRates("USD");
+        setRates(r.conversion_rates);
+      } else {
+        setRates({});
       }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }
 
-      load();
+  useEffect(() => {
+    const unsubscribe = loadData();
+    const interval = setInterval(loadData, 1000); // atualiza automaticamente ao favoritar
 
-      return () => {
-        isActive = false;
-      };
-    }, [])
-  );
+    return () => clearInterval(interval);
+  }, []);
 
   if (loading) return <ActivityIndicator style={{ flex: 1 }} />;
 
@@ -63,7 +49,7 @@ export default function Favorites() {
         data={favorites}
         keyExtractor={(item) => item}
         renderItem={({ item }) => {
-          const rate = rates[item];
+          const rate = rates ? rates[item] : undefined;
           return (
             <View style={styles.row}>
               <Text style={styles.code}>{item}</Text>
@@ -82,11 +68,7 @@ export default function Favorites() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   emptyText: { fontSize: 16, color: "#666" },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 12,
-  },
+  row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 12 },
   code: { fontSize: 16, fontWeight: "600" },
   value: { fontSize: 16 },
   sep: { height: 1, backgroundColor: "#eee" },
